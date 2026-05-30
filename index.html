@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECharts 环形图 - 动态后台数据修改(3秒轮播)</title>
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: transparent; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 650px;
+            height: 450px;
+            background: transparent; 
+            overflow: hidden;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            position: relative;
+        }
+
+        /* 内圈边缘流光层 */
+        .glow-effect {
+            position: absolute;
+            top: 58%; 
+            left: 50%;
+            width: 200px;
+            height: 200px;
+            margin-top: -100px;
+            margin-left: -100px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0;
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease;
+            background: conic-gradient(
+                from 0deg, transparent 0%, rgba(0, 242, 254, 0.05) 35%,
+                rgba(0, 242, 254, 0.6) 47%, #00f2fe 50%, 
+                rgba(0, 242, 254, 0.6) 53%, rgba(0, 242, 254, 0.05) 65%, transparent 100%
+            );
+            filter: blur(2px);
+            -webkit-mask: radial-gradient(circle, transparent 84%, #000 85%);
+            mask: radial-gradient(circle, transparent 84%, #000 85%);
+        }
+        .glow-effect.active { opacity: 1; }
+
+        /* 圆心向外发散层 */
+        .center-halo {
+            position: absolute;
+            top: 58%; left: 50%;
+            width: 190px; height: 190px;
+            margin-top: -95px; margin-left: -95px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            transition: background 0.6s ease, opacity 0.4s ease;
+            animation: pulseHalo 3s infinite ease-in-out;
+        }
+        .center-halo.active { opacity: 1; }
+
+        @keyframes pulseHalo {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.05); opacity: 0.9; filter: blur(12px); }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* 参数修改弹窗样式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(5px);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-box {
+            background: #1c2333;
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            border-radius: 12px;
+            width: 450px;
+            max-height: 80vh;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            color: #fff;
+        }
+        .modal-header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #00f2fe;
+            display: flex;
+            justify-content: space-between;
+        }
+        .data-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 16px;
+            padding-right: 4px;
+        }
+        .data-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+        .data-item input {
+            background: #2a344a;
+            border: 1px solid #475569;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            outline: none;
+        }
+        .data-item input[type="text"] { flex: 2; }
+        .data-item input[type="number"] { flex: 1; }
+        .btn {
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 500;
+        }
+        .btn-add { background: #10b981; color: white; width: 100%; margin-bottom: 16px; }
+        .btn-del { background: #ef4444; color: white; padding: 6px 12px; }
+        .btn-save { background: #00f2fe; color: #1c2333; font-weight: bold; }
+        .btn-cancel { background: #475569; color: white; margin-right: 10px; }
+        .modal-footer { display: flex; justify-content: flex-end; }
+    </style>
+</head>
+<body>
+
+    <div class="chart-container">
+        <div id="centerHalo" class="center-halo"></div>
+        <div id="glowCircle" class="glow-effect"></div>
+        <div id="main"></div>
+    </div>
+
+    <div id="dataModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span>维度参数配置面板</span>
+            </div>
+            <button class="btn btn-add" onclick="addNewItem()">+ 新增数据项</button>
+            <div id="dataList" class="data-list">
+                </div>
+            <div class="modal-footer">
+                <button class="btn btn-cancel" onclick="closeModal()">取消</button>
+                <button class="btn btn-save" onclick="saveData()">保存并应用</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var chartDom = document.getElementById('main');
+        var glowCircle = document.getElementById('glowCircle');
+        var centerHalo = document.getElementById('centerHalo');
+        var myChart = echarts.init(chartDom);
+
+        var baseColors = ['#3b82f6', '#ef4444', '#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6'];
+        var haloColors = [
+            'rgba(59, 130, 246, 0.4)', 'rgba(239, 68, 68, 0.4)', 'rgba(16, 185, 129, 0.4)', 
+            'rgba(6, 182, 212, 0.4)', 'rgba(139, 92, 246, 0.4)', 'rgba(245, 158, 11, 0.4)',
+            'rgba(236, 72, 153, 0.4)', 'rgba(20, 184, 166, 0.4)'
+        ];
+
+        var rawData = [
+            { value: 1048, name: 'Search Engine' },
+            { value: 735, name: 'Direct' },
+            { value: 580, name: 'Email' },
+            { value: 484, name: 'Union Ads' },
+            { value: 300, name: 'Video Ads' }
+        ];
+
+        var total = 0;
+        var currentIndex = -1;
+        var timer = null;
+
+        function buildChartData(data) {
+            total = data.reduce((sum, item) => sum + Number(item.value), 0);
+            return data.map((item, idx) => {
+                var colorIdx = idx % baseColors.length;
+                var baseColor = baseColors[colorIdx];
+                return {
+                    value: Number(item.value),
+                    name: item.name,
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                            { offset: 0, color: lightenColor(baseColor, 40) }, 
+                            { offset: 0.7, color: baseColor },                  
+                            { offset: 1, color: darkenColor(baseColor, 30) }    
+                        ])
+                    }
+                };
+            });
+        }
+
+        function getOption() {
+            return {
+                backgroundColor: 'transparent', 
+                title: {
+                    text: 'Access From',
+                    left: '20', top: '20',
+                    textStyle: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+                },
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(20, 24, 34, 0.9)',
+                    borderColor: '#00f2fe',
+                    borderWidth: 1,
+                    textStyle: { color: '#fff' },
+                    formatter: '{b}<br/>{c} ({d}%)'
+                },
+                legend: {
+                    top: '12%', left: 'center',
+                    textStyle: { color: '#ccc' },
+                    icon: 'circle'
+                },
+                series: [
+                    {
+                        name: 'Access From',
+                        type: 'pie',
+                        center: ['50%', '58%'], 
+                        radius: ['45%', '72%'], 
+                        avoidLabelOverlap: false,
+                        itemStyle: { borderRadius: 0, borderWidth: 0 },
+                        label: { show: false, position: 'center' },
+                        emphasis: {
+                            scaleSize: 10, 
+                            label: {
+                                show: true,
+                                formatter: function(params) {
+                                    return '{val|' + params.value + '}\n{name|' + params.name + '}\n{percent|(' + params.percent + '%)}';
+                                },
+                                rich: {
+                                    val: { fontSize: 36, fontWeight: 'bold', color: '#fff', lineHeight: 46 },
+                                    name: { fontSize: 15, color: '#aaa', lineHeight: 24 },
+                                    percent: { fontSize: 18, fontWeight: '500', color: '#00f2fe', lineHeight: 28 }
+                                }
+                            }
+                        },
+                        labelLine: { show: false },
+                        data: buildChartData(rawData)
+                    }
+                ]
+            };
+        }
+
+        myChart.setOption(getOption());
+
+        function getAngleRange(index) {
+            var startPercent = 0;
+            for (var i = 0; i < index; i++) { startPercent += Number(rawData[i].value) / total; }
+            var currentPercent = Number(rawData[index].value) / total;
+            return 90 - ((startPercent + currentPercent / 2) * 360);
+        }
+
+        function updateEffect(index) {
+            if (rawData.length === 0) return;
+            if (currentIndex >= 0 && currentIndex < rawData.length) {
+                myChart.dispatchAction({ type: 'downplay', seriesIndex: 0, dataIndex: currentIndex });
+            }
+
+            currentIndex = index % rawData.length;
+            myChart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: currentIndex });
+
+            var targetAngle = getAngleRange(currentIndex);
+            var rotateDeg = -targetAngle + 90; 
+            glowCircle.classList.add('active');
+            glowCircle.style.transform = 'rotate(' + rotateDeg + 'deg)';
+
+            var colorIdx = currentIndex % baseColors.length;
+            centerHalo.classList.add('active');
+            centerHalo.style.background = `radial-gradient(circle, ${haloColors[colorIdx]} 0%, ${haloColors[colorIdx].replace('0.4','0.1')} 50%, transparent 70%)`;
+        }
+
+        // ================= 修改点：轮播时间缩短至 3000 毫秒（3秒） =================
+        function startCarousel() {
+            if (rawData.length === 0) return;
+            timer = setInterval(function() {
+                var nextIndex = (currentIndex + 1) % rawData.length;
+                updateEffect(nextIndex);
+            }, 3000); // 更改为 3秒 切换一次
+        }
+
+        setTimeout(function() { updateEffect(0); startCarousel(); }, 500);
+
+        // ================= 交互动作 =================
+        myChart.on('mouseover', function(params) {
+            clearInterval(timer);
+            if (params.dataIndex !== currentIndex) { updateEffect(params.dataIndex); }
+        });
+
+        myChart.on('mouseout', function(params) { startCarousel(); });
+
+        myChart.on('click', function(params) {
+            clearInterval(timer);
+            openModal();
+        });
+
+        // ================= 弹窗配置面板逻辑 =================
+        var modal = document.getElementById('dataModal');
+        var dataListContainer = document.getElementById('dataList');
+
+        function openModal() {
+            dataListContainer.innerHTML = '';
+            rawData.forEach((item, index) => {
+                createItemRow(item.name, item.value, index);
+            });
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            startCarousel();
+        }
+
+        function createItemRow(name, value, index) {
+            var div = document.createElement('div');
+            div.className = 'data-item';
+            div.innerHTML = `
+                <input type="text" class="item-name" value="${name}" placeholder="项目名称">
+                <input type="number" class="item-value" value="${value}" placeholder="数值">
+                <button class="btn btn-del" onclick="this.parentElement.remove()">删除</button>
+            `;
+            dataListContainer.appendChild(div);
+        }
+
+        function addNewItem() {
+            createItemRow('', '', rawData.length);
+        }
+
+        function saveData() {
+            var rows = dataListContainer.getElementsByClassName('data-item');
+            var newData = [];
+            
+            for (var i = 0; i < rows.length; i++) {
+                var nameInput = rows[i].querySelector('.item-name').value.trim();
+                var valInput = rows[i].querySelector('.item-value').value;
+                
+                if (nameInput && valInput !== '') {
+                    newData.push({
+                        name: nameInput,
+                        value: Number(valInput)
+                    });
+                }
+            }
+
+            if(newData.length === 0) {
+                alert("请至少保留一组有效的名称和数据参数！");
+                return;
+            }
+
+            rawData = newData;
+            myChart.setOption(getOption(), true); 
+            modal.style.display = 'none';
+            currentIndex = 0;
+            updateEffect(0);
+            startCarousel();
+        }
+
+        function lightenColor(hex, percent) {
+            var num = parseInt(hex.replace("#",""), 16),
+            amt = Math.round(2.55 * percent),
+            R = (num >> 16) + amt, G = (num >> 8 & 0x00FF) + amt, B = (num & 0x0000FF) + amt;
+            return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+        }
+        function darkenColor(hex, percent) {
+            var num = parseInt(hex.replace("#",""), 16),
+            amt = Math.round(2.55 * percent),
+            R = (num >> 16) - amt, G = (num >> 8 & 0x00FF) - amt, B = (num & 0x0000FF) - amt;
+            return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+        }
+
+        window.addEventListener('resize', function() { myChart.resize(); });
+    </script>
+</body>
+</html>
