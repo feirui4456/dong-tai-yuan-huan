@@ -1,9 +1,1067 @@
+Download
+
+与 Gemini 对话
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ECharts 环形图 - 动态后台数据修改(3秒轮播)</title>
+
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
+    <style>
+
+        html, body {
+
+            margin: 0;
+
+            padding: 0;
+
+            width: 100%;
+
+            height: 100%;
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: center;
+
+            background: transparent; 
+
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+        }
+
+
+
+        .chart-container {
+
+            position: relative;
+
+            width: 650px;
+
+            height: 450px;
+
+            background: transparent; 
+
+            overflow: hidden;
+
+        }
+
+
+
+        #main {
+
+            width: 100%;
+
+            height: 100%;
+
+            z-index: 3;
+
+            position: relative;
+
+        }
+
+
+
+        /* 内圈边缘流光层 */
+
+        .glow-effect {
+
+            position: absolute;
+
+            top: 58%; 
+
+            left: 50%;
+
+            width: 200px;
+
+            height: 200px;
+
+            margin-top: -100px;
+
+            margin-left: -100px;
+
+            border-radius: 50%;
+
+            pointer-events: none;
+
+            z-index: 2;
+
+            opacity: 0;
+
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease;
+
+            background: conic-gradient(
+
+                from 0deg, transparent 0%, rgba(0, 242, 254, 0.05) 35%,
+
+                rgba(0, 242, 254, 0.6) 47%, #00f2fe 50%, 
+
+                rgba(0, 242, 254, 0.6) 53%, rgba(0, 242, 254, 0.05) 65%, transparent 100%
+
+            );
+
+            filter: blur(2px);
+
+            -webkit-mask: radial-gradient(circle, transparent 84%, #000 85%);
+
+            mask: radial-gradient(circle, transparent 84%, #000 85%);
+
+        }
+
+        .glow-effect.active { opacity: 1; }
+
+
+
+        /* 圆心向外发散层 */
+
+        .center-halo {
+
+            position: absolute;
+
+            top: 58%; left: 50%;
+
+            width: 190px; height: 190px;
+
+            margin-top: -95px; margin-left: -95px;
+
+            border-radius: 50%;
+
+            pointer-events: none;
+
+            z-index: 1;
+
+            opacity: 0;
+
+            transition: background 0.6s ease, opacity 0.4s ease;
+
+            animation: pulseHalo 3s infinite ease-in-out;
+
+        }
+
+        .center-halo.active { opacity: 1; }
+
+
+
+        @keyframes pulseHalo {
+
+            0% { transform: scale(0.9); opacity: 0.7; }
+
+            50% { transform: scale(1.05); opacity: 0.9; filter: blur(12px); }
+
+            100% { transform: scale(0.9); opacity: 0.7; }
+
+        }
+
+
+
+        /* 参数修改弹窗样式 */
+
+        .modal-overlay {
+
+            display: none;
+
+            position: fixed;
+
+            top: 0; left: 0; width: 100%; height: 100%;
+
+            background: rgba(0, 0, 0, 0.75);
+
+            backdrop-filter: blur(5px);
+
+            z-index: 999;
+
+            justify-content: center;
+
+            align-items: center;
+
+        }
+
+        .modal-box {
+
+            background: #1c2333;
+
+            border: 1px solid rgba(0, 242, 254, 0.3);
+
+            border-radius: 12px;
+
+            width: 450px;
+
+            max-height: 80vh;
+
+            padding: 24px;
+
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+
+            display: flex;
+
+            flex-direction: column;
+
+            color: #fff;
+
+        }
+
+        .modal-header {
+
+            font-size: 18px;
+
+            font-weight: bold;
+
+            margin-bottom: 16px;
+
+            color: #00f2fe;
+
+            display: flex;
+
+            justify-content: space-between;
+
+        }
+
+        .data-list {
+
+            overflow-y: auto;
+
+            flex: 1;
+
+            margin-bottom: 16px;
+
+            padding-right: 4px;
+
+        }
+
+        .data-item {
+
+            display: flex;
+
+            gap: 10px;
+
+            margin-bottom: 12px;
+
+            align-items: center;
+
+        }
+
+        .data-item input {
+
+            background: #2a344a;
+
+            border: 1px solid #475569;
+
+            color: #fff;
+
+            padding: 6px 10px;
+
+            border-radius: 6px;
+
+            outline: none;
+
+        }
+
+        .data-item input[type="text"] { flex: 2; }
+
+        .data-item input[type="number"] { flex: 1; }
+
+        .btn {
+
+            cursor: pointer;
+
+            padding: 8px 16px;
+
+            border-radius: 6px;
+
+            border: none;
+
+            font-weight: 500;
+
+        }
+
+        .btn-add { background: #10b981; color: white; width: 100%; margin-bottom: 16px; }
+
+        .btn-del { background: #ef4444; color: white; padding: 6px 12px; }
+
+        .btn-save { background: #00f2fe; color: #1c2333; font-weight: bold; }
+
+        .btn-cancel { background: #475569; color: white; margin-right: 10px; }
+
+        .modal-footer { display: flex; justify-content: flex-end; }
+
+    </style>
+
+</head>
+
+<body>
+
+
+
+    <div class="chart-container">
+
+        <div id="centerHalo" class="center-halo"></div>
+
+        <div id="glowCircle" class="glow-effect"></div>
+
+        <div id="main"></div>
+
+    </div>
+
+
+
+    <div id="dataModal" class="modal-overlay">
+
+        <div class="modal-box">
+
+            <div class="modal-header">
+
+                <span>维度参数配置面板</span>
+
+            </div>
+
+            <button class="btn btn-add" onclick="addNewItem()">+ 新增数据项</button>
+
+            <div id="dataList" class="data-list">
+
+                </div>
+
+            <div class="modal-footer">
+
+                <button class="btn btn-cancel" onclick="closeModal()">取消</button>
+
+                <button class="btn btn-save" onclick="saveData()">保存并应用</button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <script type="text/javascript">
+
+        var chartDom = document.getElementById('main');
+
+        var glowCircle = document.getElementById('glowCircle');
+
+        var centerHalo = document.getElementById('centerHalo');
+
+        var myChart = echarts.init(chartDom);
+
+
+
+        var baseColors = ['#3b82f6', '#ef4444', '#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6'];
+
+        var haloColors = [
+
+            'rgba(59, 130, 246, 0.4)', 'rgba(239, 68, 68, 0.4)', 'rgba(16, 185, 129, 0.4)', 
+
+            'rgba(6, 182, 212, 0.4)', 'rgba(139, 92, 246, 0.4)', 'rgba(245, 158, 11, 0.4)',
+
+            'rgba(236, 72, 153, 0.4)', 'rgba(20, 184, 166, 0.4)'
+
+        ];
+
+
+
+        var rawData = [
+
+            { value: 51048, name: '无菌1线' },
+
+            { value: 23735, name: '无菌2线' },
+
+            { value: 26580, name: '无菌5线' },
+
+            { value: 13484, name: '无菌6线' },
+
+            { value: 34300, name: '无菌3线' }
+
+        ];
+
+
+
+        var total = 0;
+
+        var currentIndex = -1;
+
+        var timer = null;
+
+
+
+        function buildChartData(data) {
+
+            total = data.reduce((sum, item) => sum + Number(item.value), 0);
+
+            return data.map((item, idx) => {
+
+                var colorIdx = idx % baseColors.length;
+
+                var baseColor = baseColors[colorIdx];
+
+                return {
+
+                    value: Number(item.value),
+
+                    name: item.name,
+
+                    itemStyle: {
+
+                        color: new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+
+                            { offset: 0, color: lightenColor(baseColor, 40) }, 
+
+                            { offset: 0.7, color: baseColor },                  
+
+                            { offset: 1, color: darkenColor(baseColor, 30) }    
+
+                        ])
+
+                    }
+
+                };
+
+            });
+
+        }
+
+
+
+        function getOption() {
+
+            return {
+
+                backgroundColor: 'transparent', 
+
+                title: {
+
+                    text: '',
+
+                    left: '20', top: '20',
+
+                    textStyle: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+
+                },
+
+                tooltip: {
+
+                    trigger: 'item',
+
+                    backgroundColor: 'rgba(20, 24, 34, 0.9)',
+
+                    borderColor: '#00f2fe',
+
+                    borderWidth: 1,
+
+                    textStyle: { color: '#fff' },
+
+                    formatter: '{b}<br/>{c} ({d}%)'
+
+                },
+
+                legend: {
+
+                    top: '12%', left: 'center',
+
+                    textStyle: { color: '#ccc' },
+
+                    icon: 'circle'
+
+                },
+
+                series: [
+
+                    {
+
+                        name: '',
+
+                        type: 'pie',
+
+                        center: ['50%', '58%'], 
+
+                        radius: ['45%', '72%'], 
+
+                        avoidLabelOverlap: false,
+
+                        itemStyle: { borderRadius: 0, borderWidth: 0 },
+
+                        label: { show: false, position: 'center' },
+
+                        emphasis: {
+
+                            scaleSize: 10, 
+
+                            label: {
+
+                                show: true,
+
+                                formatter: function(params) {
+
+                                    return '{val|' + params.value + '}\n{name|' + params.name + '}\n{percent|(' + params.percent + '%)}';
+
+                                },
+
+                                rich: {
+
+                                    val: { fontSize: 36, fontWeight: 'bold', color: '#fff', lineHeight: 46 },
+
+                                    name: { fontSize: 15, color: '#aaa', lineHeight: 24 },
+
+                                    percent: { fontSize: 18, fontWeight: '500', color: '#00f2fe', lineHeight: 28 }
+
+                                }
+
+                            }
+
+                        },
+
+                        labelLine: { show: false },
+
+                        data: buildChartData(rawData)
+
+                    }
+
+                ]
+
+            };
+
+        }
+
+
+
+        myChart.setOption(getOption());
+
+
+
+        function getAngleRange(index) {
+
+            var startPercent = 0;
+
+            for (var i = 0; i < index; i++) { startPercent += Number(rawData[i].value) / total; }
+
+            var currentPercent = Number(rawData[index].value) / total;
+
+            return 90 - ((startPercent + currentPercent / 2) * 360);
+
+        }
+
+
+
+        function updateEffect(index) {
+
+            if (rawData.length === 0) return;
+
+            if (currentIndex >= 0 && currentIndex < rawData.length) {
+
+                myChart.dispatchAction({ type: 'downplay', seriesIndex: 0, dataIndex: currentIndex });
+
+            }
+
+
+
+            currentIndex = index % rawData.length;
+
+            myChart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: currentIndex });
+
+
+
+            var targetAngle = getAngleRange(currentIndex);
+
+            var rotateDeg = -targetAngle + 90; 
+
+            glowCircle.classList.add('active');
+
+            glowCircle.style.transform = 'rotate(' + rotateDeg + 'deg)';
+
+
+
+            var colorIdx = currentIndex % baseColors.length;
+
+            centerHalo.classList.add('active');
+
+            centerHalo.style.background = `radial-gradient(circle, ${haloColors[colorIdx]} 0%, ${haloColors[colorIdx].replace('0.4','0.1')} 50%, transparent 70%)`;
+
+        }
+
+
+
+        // ================= 修改点：轮播时间缩短至 3000 毫秒（3秒） =================
+
+        function startCarousel() {
+
+            if (rawData.length === 0) return;
+
+            timer = setInterval(function() {
+
+                var nextIndex = (currentIndex + 1) % rawData.length;
+
+                updateEffect(nextIndex);
+
+            }, 3000); // 更改为 3秒 切换一次
+
+        }
+
+
+
+        setTimeout(function() { updateEffect(0); startCarousel(); }, 500);
+
+
+
+        // ================= 交互动作 =================
+
+        myChart.on('mouseover', function(params) {
+
+            clearInterval(timer);
+
+            if (params.dataIndex !== currentIndex) { updateEffect(params.dataIndex); }
+
+        });
+
+
+
+        myChart.on('mouseout', function(params) { startCarousel(); });
+
+
+
+        myChart.on('click', function(params) {
+
+            clearInterval(timer);
+
+            openModal();
+
+        });
+
+
+
+        // ================= 弹窗配置面板逻辑 =================
+
+        var modal = document.getElementById('dataModal');
+
+        var dataListContainer = document.getElementById('dataList');
+
+
+
+        function openModal() {
+
+            dataListContainer.innerHTML = '';
+
+            rawData.forEach((item, index) => {
+
+                createItemRow(item.name, item.value, index);
+
+            });
+
+            modal.style.display = 'flex';
+
+        }
+
+
+
+        function closeModal() {
+
+            modal.style.display = 'none';
+
+            startCarousel();
+
+        }
+
+
+
+        function createItemRow(name, value, index) {
+
+            var div = document.createElement('div');
+
+            div.className = 'data-item';
+
+            div.innerHTML = `
+
+                <input type="text" class="item-name" value="${name}" placeholder="项目名称">
+
+                <input type="number" class="item-value" value="${value}" placeholder="数值">
+
+                <button class="btn btn-del" onclick="this.parentElement.remove()">删除</button>
+
+            `;
+
+            dataListContainer.appendChild(div);
+
+        }
+
+
+
+        function addNewItem() {
+
+            createItemRow('', '', rawData.length);
+
+        }
+
+
+
+        function saveData() {
+
+            var rows = dataListContainer.getElementsByClassName('data-item');
+
+            var newData = [];
+
+            
+
+            for (var i = 0; i < rows.length; i++) {
+
+                var nameInput = rows[i].querySelector('.item-name').value.trim();
+
+                var valInput = rows[i].querySelector('.item-value').value;
+
+                
+
+                if (nameInput && valInput !== '') {
+
+                    newData.push({
+
+                        name: nameInput,
+
+                        value: Number(valInput)
+
+                    });
+
+                }
+
+            }
+
+
+
+            if(newData.length === 0) {
+
+                alert("请至少保留一组有效的名称和数据参数！");
+
+                return;
+
+            }
+
+
+
+            rawData = newData;
+
+            myChart.setOption(getOption(), true); 
+
+            modal.style.display = 'none';
+
+            currentIndex = 0;
+
+            updateEffect(0);
+
+            startCarousel();
+
+        }
+
+
+
+        function lightenColor(hex, percent) {
+
+            var num = parseInt(hex.replace("#",""), 16),
+
+            amt = Math.round(2.55 * percent),
+
+            R = (num >> 16) + amt, G = (num >> 8 & 0x00FF) + amt, B = (num & 0x0000FF) + amt;
+
+            return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+
+        }
+
+        function darkenColor(hex, percent) {
+
+            var num = parseInt(hex.replace("#",""), 16),
+
+            amt = Math.round(2.55 * percent),
+
+            R = (num >> 16) - amt, G = (num >> 8 & 0x00FF) - amt, B = (num & 0x0000FF) - amt;
+
+            return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+
+        }
+
+
+
+        window.addEventListener('resize', function() { myChart.resize(); });
+
+    </script>
+
+</body>
+
+</html>
+
+这个代码保存在GITHUB,里面占比数值怎么改为和飞书多维表格联动
+
+要将保存在 GitHub 上的 HTML 页面中的 ECharts 数据，改为与飞书多维表格（Bitable）联动，你需要通过飞书开放平台提供的 API 来动态获取多维表格中的数据，并用其替换掉代码中固定的 rawData。
+
+以下是实现这一联动完整的改造方案：
+
+第一步：飞书开放平台配置
+在写代码前，你需要获得调用飞书接口的权限和参数：
+
+登录 飞书开放平台，创建一个企业自建应用。
+
+进入应用管理后台，在权限管理中，搜索并开启以下权限：
+
+bitable:app （查看、管理多维表格）
+
+发布该应用（确保应用在企业内处于启用状态）。
+
+在应用凭证（App Credentials）中，记录下你的 App ID 和 App Secret。
+
+重要（授权）：打开你的飞书多维表格，点击右上角 ... -> 自动化/高级功能 -> 添加企业自建应用，把刚刚创建的应用添加进来，否则应用没有权限读取这个多维表格。
+
+从多维表格的网页 URL 中记录下两个关键 ID：
+
+App Token：URL 中 base/ 后面的一串字符串。
+
+Table ID：URL 中 table= 后面的一串字符串。
+
+第二步：修改 HTML/JavaScript 代码
+因为前端浏览器直接调用飞书 API 换取 tenant_access_token 会暴露你的 App Secret（有严重安全风险），且飞书 API 存在跨域问题（CORS）。标准的做法是写一个轻量后端服务做中转。
+
+但如果这是一个纯前端页面（例如托管在 GitHub Pages 上），且你仅在内网或安全可控的环境下使用，可以通过在前端直接请求飞书接口实现（需要注意安全和跨域，通常需要结合反向代理，这里演示最直观的直接请求逻辑）。
+
+请将 <script type="text/javascript"> 标签内的代码进行如下改造：
+
+JavaScript
+        // ======= 1. 替换原有的固定 rawData，声明飞书配置参数 =======
+        var FEISHU_CONFIG = {
+            app_id: 'cli_xxxxxxxxxxxxxx',       // 替换为你的 飞书 App ID
+            app_secret: 'xxxxxxxxxxxxxxxxxxxx', // 替换为你的 飞书 App Secret (注意安全)
+            app_token: 'bascnxxxxxxxxxxxx',     // 替换为你的多维表格 App Token
+            table_id: 'tblxxxxxxxxx',           // 替换为你的表格 Table ID
+            // 对应你多维表格中的列名
+            name_field: '产线名称',              // 多维表格中对应“无菌1线”的文本列名
+            value_field: '产量'                 // 多维表格中对应数字的数字列名
+        };
+
+        var rawData = []; // 初始留空，等接口数据加载
+        var total = 0;
+        var currentIndex = -1;
+        var timer = null;
+
+        // ======= 2. 新增：获取飞书 tenant_access_token =======
+        async function getFeishuToken() {
+            const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                body: JSON.stringify({
+                    app_id: FEISHU_CONFIG.app_id,
+                    app_secret: FEISHU_CONFIG.app_secret
+                })
+            });
+            const data = await res.json();
+            return data.tenant_access_token;
+        }
+
+        // ======= 3. 新增：读取多维表格记录并更新图表 =======
+        async function fetchFeishuBitableData() {
+            try {
+                const token = await getFeishuToken();
+                // 请求多维表格记录接口（默认返回100条，可通过 page_size 调整）
+                const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.app_token}/tables/${FEISHU_CONFIG.table_id}/records`;
+                
+                const res = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const resData = await res.json();
+                
+                if (resData.code === 0 && resData.data.items) {
+                    // 解析飞书返回的数据结构
+                    rawData = resData.data.items.map(item => {
+                        const fields = item.fields;
+                        return {
+                            // 飞书文本型字段通常为数组或字符串，这里做兼容处理
+                            name: Array.isArray(fields[FEISHU_CONFIG.name_field]) 
+                                  ? fields[FEISHU_CONFIG.name_field][0].text 
+                                  : fields[FEISHU_CONFIG.name_field],
+                            value: Number(fields[FEISHU_CONFIG.value_field]) || 0
+                        };
+                    }).filter(d => d.name); // 过滤掉空行
+
+                    // 重新渲染图表
+                    if (rawData.length > 0) {
+                        myChart.setOption(getOption(), true);
+                        currentIndex = 0;
+                        updateEffect(0);
+                    }
+                } else {
+                    console.error("飞书数据获取失败:", resData.msg);
+                }
+            } catch (error) {
+                console.error("网络请求错误:", error);
+            }
+        }
+
+        // ======= 4. 修改：初始化逻辑 =======
+        // 页面加载后先去拉取飞书多维表格数据
+        window.addEventListener('load', async () => {
+            await fetchFeishuBitableData();
+            // 原有的定时轮播延迟开启
+            setTimeout(function() { 
+                if(rawData.length > 0) startCarousel(); 
+            }, 500);
+            
+            // 可以设置一个定时器，每隔 1 分钟自动刷新一次多维表格数据，实现实时联动
+            setInterval(fetchFeishuBitableData, 60000); 
+        });
+
+        // 后面原有的 buildChartData、getOption、updateEffect 等函数保持不变...
+第三步：关于“维度参数配置面板”的调整建议
+你原来的代码里自带了一个通过点击图表弹出的 维度参数配置面板 (dataModal)，可以增加、删除和保存数据。
+
+既然数据现在归飞书多维表格管了，你有两个选择：
+
+直接删掉/隐藏这个弹窗功能：数据完全在飞书多维表格里改，GitHub 页面只负责展示。只需把代码里的 myChart.on('click', ...) 删掉即可。
+
+将保存功能也对接到飞书：如果希望在这个网页上修改后能同步回飞书，需要改造 saveData() 函数，利用飞书的“新增记录 POST / 更新记录 PUT / 删除记录 DELETE” API，把 newData 传回飞书。
+
+⚠️ 生产环境的安全隐患与解决办法（重要）
+如果你的 GitHub 仓库是 Public（公开） 的，直接把 app_secret 写在前端代码里提交，GitHub 会检测到密钥泄露并报警，飞书也会封禁该密钥。
+
+推荐的优雅解决方案（不写代码）：
+利用飞书多维表格自带的“高级图表”或者飞书仪表盘功能。飞书多维表格已经内嵌了仪表盘和 ECharts 插件的能力，可以直接在飞书内部配置这个环形图，不需要单独托管在 GitHub 上。
+
+如果你必须使用自己写的带有流光特效的 HTML 页面：
+
+标准方案：用 Node.js / Python 写一个简单的后端部署在 Vercel 或 阿里云上，后端负责持有 app_secret 并请求飞书，HTML 前端只请求你自己的后端接口。
+
+低成本方案：把 GitHub 仓库设为 Private（私有），然后通过本地部署，或者在 GitHub Action 中使用 Secrets 动态注入变量。
+
+低成本方案：把 GitHub 仓库设为 Private（私有），然后通过本地部署，或者在 GitHub Action 中使用 Secrets 动态注入变量。怎么实现
+
+既然要走最省钱、不需要独立服务器的低成本路线，目前最成熟的做法是：利用 GitHub Actions 在打包时把密码注入进去，发布到 GitHub Pages（虽然仓库是私有的，但 GitHub Enterprise 或付费版支持私有仓库的 Pages，如果你是免费账户，Pages 只能是公开的，但可以通过混淆代码来增加破解难度；或者采用纯本地部署）。
+
+这里为你提供两种具体的落地实现方式：GitHub Actions 自动化方案 和 纯本地部署方案。
+
+方案一：GitHub Actions 动态注入变量（推荐，全自动）
+这个方案的原理是：你的源码里不写具体的 App ID 和 Secret，而是写上占位符（如 __FEISHU_APP_ID__）。当代码推送到 GitHub 时，GitHub 自动化脚本会自动把你在后台配置好的密码替换到代码里，并发布网页。
+
+1. 在 GitHub 仓库配置“保险箱”（Secrets）
+打开你的 GitHub 私有仓库，点击 Settings -> Secrets and variables -> Actions。
+
+点击 New repository secret，添加以下两个密钥：
+
+Name: FEISHU_APP_ID 对应 Value: 你的飞书App ID
+
+Name: FEISHU_APP_SECRET 对应 Value: 你的飞书App Secret
+
+2. 修改 HTML 代码中的变量部分
+将你 HTML 代码中的 FEISHU_CONFIG 修改为占位符形式，不要留真实密码：
+
+JavaScript
+        var FEISHU_CONFIG = {
+            app_id: '{{FEISHU_APP_ID}}',       // 留出占位符
+            app_secret: '{{FEISHU_APP_SECRET}}', // 留出占位符
+            app_token: 'bascnxxxxxxxxxxxx',     // 属于公开信息，可以直接写死
+            table_id: 'tblxxxxxxxxx',           // 属于公开信息，可以直接写死
+            name_field: '产线名称',
+            value_field: '产量'
+        };
+3. 创建 GitHub Actions 自动化工作流
+在你的项目根目录下，创建 .github/workflows/deploy.yml 文件，写入以下内容：
+
+YAML
+name: Deploy ECharts with Secrets
+
+on:
+  push:
+    branches:
+      - main # 当你向 main 分支推送代码时触发
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 核心步骤：用真正的 Secret 替换 HTML 里的占位符
+    - name: Inject Secrets into HTML
+      run: |
+        sed -i 's/{{FEISHU_APP_ID}}/${{ secrets.FEISHU_APP_ID }}/g' index.html
+        sed -i 's/{{FEISHU_APP_SECRET}}/${{ secrets.FEISHU_APP_SECRET }}/g' index.html
+
+    # 如果你是免费账户，私有仓库无法直接开启 Pages，通常会发布到公开的 gh-pages 分支，
+    # 或者你可以把替换后的文件部署到 Vercel / Netlify 等同样免费且支持私有部署的平台。
+    # 这里以发布到当前仓库的另一个分支（用于部署）为例：
+    - name: Deploy to Branch
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: . # 要部署的文件夹
+        branch: release-prod # 带有真实密码的代码会被推送到这个分支
+⚠️ 注意（安全红线）： > 只要这个网页要在浏览器里运行，最终用户在浏览器里“右键 -> 查看网页源代码”依然能看到被注入的密码。
+
+解决办法： 如果这个网页只是你个人、或者公司内部小范围看，那就无所谓。如果想防别人，可以在 Actions 步骤中加入一步 JS 代码混淆（Minify/Obfuscate），把包含密码的代码压缩混淆成亲妈都不认识的乱码，虽然不能 100% 杜绝黑客，但能防住 99% 的普通用户。
+
+方案二：纯本地部署方案（最安全、无跨域风险）
+如果你只是在本地办公室的电脑上、或者公司内网大屏上展示这个图表，完全不需要传到网上。直接利用 Node.js 把它跑在本地，密码永远不离屏。
+
+1. 修改 HTML 代码
+在 HTML 同级目录下，新建一个 config.js 文件，把敏感信息放进去，并在 .gitignore 中忽略它，确保它绝不上传：
+
+JavaScript
+// config.js 放在本地，千万不要 commit 到 GitHub
+const LOCAL_CONFIG = {
+    app_id: 'cli_xxxxxxxxxxxxxx',
+    app_secret: 'xxxxxxxxxxxxxxxxxxxx'
+};
+然后在你的主 index.html 的 <head> 标签里引入它：
+
+HTML
+<script src="./config.js"></script>
+接着在图表页面的主逻辑里直接读取：
+
+JavaScript
+        var FEISHU_CONFIG = {
+            app_id: LOCAL_CONFIG.app_id,       // 从本地配置文件读取
+            app_secret: LOCAL_CONFIG.app_secret, 
+            app_token: 'bascnxxxxxxxxxxxx',     
+            table_id: 'tblxxxxxxxxx',           
+            name_field: '产线名称',
+            value_field: '产量'
+        };
+2. 本地双击打开会报错吗？（处理跨域问题）
+因为飞书的 API 不允许文件协议（file:///C:/...）直接跨域请求。你不能直接双击 HTML 文件打开，需要用一个本地本地服务器环境运行。
+
+最简单的两种本地运行方法：
+
+VS Code 插件（推荐）：用 VS Code 打开文件夹，安装 Live Server 插件，右键点击 index.html 选择 Open with Live Server。它会在本地跑一个 http://127.0.0.1:5500 的环境，图表就能完美加载。
+
+Python 一键命令：如果你电脑有 Python，在文件夹目录下打开终端（Terminal），运行：
+
+Bash
+python -m http.server 8080
+然后在浏览器输入 http://localhost:8080 就能看到网页。
+
+总结建议
+如果需要公网访问、大屏展示，用 方案一（GitHub Actions），并建议结合多维表格的分享页面或者把生成的代码做一次 base64 混淆。
+
+如果只是自己看、办公室内网看，用 方案二（本地 config.js） 配合私有仓库，既做到了版本控制，又绝对不会泄露任何飞书密钥。
+
+修改 HTML 代码中的变量部分完整代码
+
+为你提供修改后的完整 HTML 代码。
+
+这里采用了 GitHub Actions 自动化方案 的标准写法：将 app_id 和 app_secret 改为了占位符 {{FEISHU_APP_ID}} 和 {{FEISHU_APP_SECRET}}。当你在 GitHub Actions 中配置好工作流后，系统会自动将它们替换为你存在 GitHub Secrets 里的真实密码。
+
+你只需要将其中的 app_token、table_id、name_field 和 value_field 修改为你飞书多维表格的实际参数即可：
+
+HTML
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECharts 环形图 - 动态后台数据修改(3秒轮播)</title>
+    <title>ECharts 环形图 - 飞书多维表格动态联动(3秒轮播)</title>
     <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
         html, body {
@@ -78,72 +1136,6 @@
             50% { transform: scale(1.05); opacity: 0.9; filter: blur(12px); }
             100% { transform: scale(0.9); opacity: 0.7; }
         }
-
-        /* 参数修改弹窗样式 */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(5px);
-            z-index: 999;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-box {
-            background: #1c2333;
-            border: 1px solid rgba(0, 242, 254, 0.3);
-            border-radius: 12px;
-            width: 450px;
-            max-height: 80vh;
-            padding: 24px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            color: #fff;
-        }
-        .modal-header {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 16px;
-            color: #00f2fe;
-            display: flex;
-            justify-content: space-between;
-        }
-        .data-list {
-            overflow-y: auto;
-            flex: 1;
-            margin-bottom: 16px;
-            padding-right: 4px;
-        }
-        .data-item {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 12px;
-            align-items: center;
-        }
-        .data-item input {
-            background: #2a344a;
-            border: 1px solid #475569;
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 6px;
-            outline: none;
-        }
-        .data-item input[type="text"] { flex: 2; }
-        .data-item input[type="number"] { flex: 1; }
-        .btn {
-            cursor: pointer;
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: none;
-            font-weight: 500;
-        }
-        .btn-add { background: #10b981; color: white; width: 100%; margin-bottom: 16px; }
-        .btn-del { background: #ef4444; color: white; padding: 6px 12px; }
-        .btn-save { background: #00f2fe; color: #1c2333; font-weight: bold; }
-        .btn-cancel { background: #475569; color: white; margin-right: 10px; }
-        .modal-footer { display: flex; justify-content: flex-end; }
     </style>
 </head>
 <body>
@@ -152,21 +1144,6 @@
         <div id="centerHalo" class="center-halo"></div>
         <div id="glowCircle" class="glow-effect"></div>
         <div id="main"></div>
-    </div>
-
-    <div id="dataModal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-header">
-                <span>维度参数配置面板</span>
-            </div>
-            <button class="btn btn-add" onclick="addNewItem()">+ 新增数据项</button>
-            <div id="dataList" class="data-list">
-                </div>
-            <div class="modal-footer">
-                <button class="btn btn-cancel" onclick="closeModal()">取消</button>
-                <button class="btn btn-save" onclick="saveData()">保存并应用</button>
-            </div>
-        </div>
     </div>
 
     <script type="text/javascript">
@@ -182,18 +1159,85 @@
             'rgba(236, 72, 153, 0.4)', 'rgba(20, 184, 166, 0.4)'
         ];
 
-        var rawData = [
-            { value: 51048, name: '无菌1线' },
-            { value: 23735, name: '无菌2线' },
-            { value: 26580, name: '无菌5线' },
-            { value: 13484, name: '无菌6线' },
-            { value: 34300, name: '无菌3线' }
-        ];
+        // ================= 飞书多维表格参数配置 =================
+        var FEISHU_CONFIG = {
+            app_id: '{{FEISHU_APP_ID}}',         // GitHub Actions 会自动替换此占位符
+            app_secret: '{{FEISHU_APP_SECRET}}', // GitHub Actions 会自动替换此占位符
+            app_token: 'bascnxxxxxxxxxxxx',       // 【请替换】为你的多维表格 App Token
+            table_id: 'tblxxxxxxxxx',             // 【请替换】为你的表格 Table ID
+            name_field: '产线名称',                // 【请替换】多维表格中对应名称的列名
+            value_field: '产量'                   // 【请替换】多维表格中对应数字的列名
+        };
 
+        var rawData = []; // 初始留空，等待飞书 API 异步加载数据
         var total = 0;
         var currentIndex = -1;
         var timer = null;
 
+        // ================= 核心：从飞书获取数据逻辑 =================
+        
+        // 1. 获取飞书 tenant_access_token
+        async function getFeishuToken() {
+            const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                body: JSON.stringify({
+                    app_id: FEISHU_CONFIG.app_id,
+                    app_secret: FEISHU_CONFIG.app_secret
+                })
+            });
+            const data = await res.json();
+            return data.tenant_access_token;
+        }
+
+        // 2. 读取多维表格记录并解析给 ECharts
+        async function fetchFeishuBitableData() {
+            try {
+                const token = await getFeishuToken();
+                const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.app_token}/tables/${FEISHU_CONFIG.table_id}/records?page_size=100`;
+                
+                const res = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const resData = await res.json();
+                
+                if (resData.code === 0 && resData.data.items) {
+                    // 数据清洗与结构转换
+                    rawData = resData.data.items.map(item => {
+                        const fields = item.fields;
+                        let nameVal = fields[FEISHU_CONFIG.name_field];
+                        // 兼容处理：飞书文本型字段有时会返回数组格式 [ {text: "xxx"} ]
+                        if (Array.isArray(nameVal)) {
+                            nameVal = nameVal[0]?.text || '';
+                        }
+                        return {
+                            name: nameVal ? String(nameVal).trim() : '',
+                            value: Number(fields[FEISHU_CONFIG.value_field]) || 0
+                        };
+                    }).filter(d => d.name !== ''); // 过滤掉空行
+
+                    // 成功获取数据后刷新图表
+                    if (rawData.length > 0) {
+                        myChart.setOption(getOption(), true);
+                        // 如果是第一次加载或者索引越界，重置到首项
+                        if (currentIndex === -1 || currentIndex >= rawData.length) {
+                            currentIndex = 0;
+                        }
+                        updateEffect(currentIndex);
+                    }
+                } else {
+                    console.error("飞书数据读取失败:", resData.msg);
+                }
+            } catch (error) {
+                console.error("请求飞书接口发生网络错误:", error);
+            }
+        }
+
+        // ================= ECharts 数据构建与配置 =================
         function buildChartData(data) {
             total = data.reduce((sum, item) => sum + Number(item.value), 0);
             return data.map((item, idx) => {
@@ -264,8 +1308,6 @@
             };
         }
 
-        myChart.setOption(getOption());
-
         function getAngleRange(index) {
             var startPercent = 0;
             for (var i = 0; i < index; i++) { startPercent += Number(rawData[i].value) / total; }
@@ -292,91 +1334,44 @@
             centerHalo.style.background = `radial-gradient(circle, ${haloColors[colorIdx]} 0%, ${haloColors[colorIdx].replace('0.4','0.1')} 50%, transparent 70%)`;
         }
 
-        // ================= 修改点：轮播时间缩短至 3000 毫秒（3秒） =================
         function startCarousel() {
             if (rawData.length === 0) return;
+            clearInterval(timer); // 启动前先清除旧定时器，防止叠加
             timer = setInterval(function() {
                 var nextIndex = (currentIndex + 1) % rawData.length;
                 updateEffect(nextIndex);
-            }, 3000); // 更改为 3秒 切换一次
+            }, 3000); // 3秒切换一次
         }
 
-        setTimeout(function() { updateEffect(0); startCarousel(); }, 500);
+        // ================= 页面初始化与生命周期 =================
+        window.addEventListener('load', async () => {
+            // 首次异步加载飞书多维表格数据
+            await fetchFeishuBitableData();
+            
+            // 数据准备完毕后，延迟启动轮播动画
+            setTimeout(function() { 
+                if (rawData.length > 0) {
+                    startCarousel(); 
+                }
+            }, 500);
 
-        // ================= 交互动作 =================
+            // 【定时同步】每隔 60 秒自动拉取一次飞书最新数据，实现无缝动态联动
+            setInterval(fetchFeishuBitableData, 60000);
+        });
+
+        // ================= 鼠标交互动作 =================
         myChart.on('mouseover', function(params) {
             clearInterval(timer);
             if (params.dataIndex !== currentIndex) { updateEffect(params.dataIndex); }
         });
 
-        myChart.on('mouseout', function(params) { startCarousel(); });
-
-        myChart.on('click', function(params) {
-            clearInterval(timer);
-            openModal();
+        myChart.on('mouseout', function(params) { 
+            startCarousel(); 
         });
 
-        // ================= 弹窗配置面板逻辑 =================
-        var modal = document.getElementById('dataModal');
-        var dataListContainer = document.getElementById('dataList');
+        // 注：原有的点击弹窗配置面板逻辑（openModal）已移除，全面交由飞书后台管控。
 
-        function openModal() {
-            dataListContainer.innerHTML = '';
-            rawData.forEach((item, index) => {
-                createItemRow(item.name, item.value, index);
-            });
-            modal.style.display = 'flex';
-        }
-
-        function closeModal() {
-            modal.style.display = 'none';
-            startCarousel();
-        }
-
-        function createItemRow(name, value, index) {
-            var div = document.createElement('div');
-            div.className = 'data-item';
-            div.innerHTML = `
-                <input type="text" class="item-name" value="${name}" placeholder="项目名称">
-                <input type="number" class="item-value" value="${value}" placeholder="数值">
-                <button class="btn btn-del" onclick="this.parentElement.remove()">删除</button>
-            `;
-            dataListContainer.appendChild(div);
-        }
-
-        function addNewItem() {
-            createItemRow('', '', rawData.length);
-        }
-
-        function saveData() {
-            var rows = dataListContainer.getElementsByClassName('data-item');
-            var newData = [];
-            
-            for (var i = 0; i < rows.length; i++) {
-                var nameInput = rows[i].querySelector('.item-name').value.trim();
-                var valInput = rows[i].querySelector('.item-value').value;
-                
-                if (nameInput && valInput !== '') {
-                    newData.push({
-                        name: nameInput,
-                        value: Number(valInput)
-                    });
-                }
-            }
-
-            if(newData.length === 0) {
-                alert("请至少保留一组有效的名称和数据参数！");
-                return;
-            }
-
-            rawData = newData;
-            myChart.setOption(getOption(), true); 
-            modal.style.display = 'none';
-            currentIndex = 0;
-            updateEffect(0);
-            startCarousel();
-        }
-
+        // ================= 辅助颜色计算函数 =================
         function lightenColor(hex, percent) {
             var num = parseInt(hex.replace("#",""), 16),
             amt = Math.round(2.55 * percent),
@@ -394,3 +1389,8 @@
     </script>
 </body>
 </html>
+
+
+
+Gemini 是一款 AI 工具，其回答未必正确无误。
+
